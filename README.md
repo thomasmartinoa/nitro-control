@@ -170,7 +170,7 @@ nitroctl boost off                # CPU turbo boost
 nitroctl battery-limit 80         # needs kernel/driver support
 nitroctl rgb zones ff0040 ffcc00 00ff88 0088ff -b 80
 nitroctl rgb effect wave -s 5 -d left
-nitroctl rgb off
+nitroctl rgb off                  # and "nitroctl rgb on" restores your last look
 nitroctl preset list
 nitroctl preset apply Gaming
 nitroctl preset save "Late night"

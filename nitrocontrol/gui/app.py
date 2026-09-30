@@ -789,6 +789,15 @@ class LightingPage(Page):
             self.box.append(grp)
 
     def _build_rgb(self):
+        self.ready = False          # becomes True once the saved lighting is loaded
+        self.kb_on = True
+        self._push = Debounce(350, self._apply)
+
+        power = Adw.PreferencesGroup()
+        self.power_row = switch_row("Keyboard lighting", "On", self._on_power)
+        power.add(self.power_row)
+        self.box.append(power)
+
         self.preview = KeyboardPreview()
         self.box.append(card(self.preview, "card-n glow"))
 
@@ -804,7 +813,7 @@ class LightingPage(Page):
         for i in range(4):
             col = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             col.append(label("ZONE %d" % (i + 1), "stat-label", xalign=0.5))
-            b = color_button("#ed1c34", self._preview_zones)
+            b = color_button("#ed1c34", self._changed)
             self.zone_btns.append(b)
             col.append(b)
             row.append(col)
@@ -818,31 +827,22 @@ class LightingPage(Page):
         br = Gtk.Box(spacing=12)
         br.append(label("Brightness", "stat-label"))
         self.z_bright = nitro_scale(0, 100, 5, 100)
-        self.z_bright.connect("value-changed", lambda *_: self._preview_zones())
+        self.z_bright.connect("value-changed", lambda *_: self._changed())
         br.append(self.z_bright)
         z.append(br)
-        btns = Gtk.Box(spacing=10, halign=Gtk.Align.END)
-        off = Gtk.Button(label="Lights off")
-        off.connect("clicked", lambda *_: self.win.run_cmd("set_keyboard", "Keyboard lighting off", refresh_state=True,
-                                                          mode="zones", colors=["000000"] * 4, brightness=0))
-        btns.append(off)
-        ap = Gtk.Button(label="Apply", css_classes=["suggested-action"])
-        ap.connect("clicked", self._apply_zones)
-        btns.append(ap)
-        z.append(btns)
         self.stack.add_named(z, "zones")
 
         # effects
         e = card()
         grp = Adw.PreferencesGroup()
-        self.fx = combo_row("Effect", "", hwmod.KB_EFFECTS, lambda i: self._preview_effect())
+        self.fx = combo_row("Effect", "", hwmod.KB_EFFECTS, lambda i: self._changed())
         self.fx.set_selected(3)
         grp.add(self.fx)
-        self.dir_row = combo_row("Direction", "", ["Right to left", "Left to right"], lambda i: self._preview_effect())
+        self.dir_row = combo_row("Direction", "", ["Right to left", "Left to right"], lambda i: self._changed())
         self.dir_row.set_selected(1)
         grp.add(self.dir_row)
         crow = Adw.ActionRow(title="Colour", subtitle="Used by single-colour effects")
-        self.fx_color = color_button("#ed1c34", self._preview_effect)
+        self.fx_color = color_button("#ed1c34", self._changed)
         self.fx_color.set_valign(Gtk.Align.CENTER)
         crow.add_suffix(self.fx_color)
         grp.add(crow)
@@ -850,79 +850,111 @@ class LightingPage(Page):
         g = Gtk.Grid(column_spacing=14, row_spacing=8)
         g.attach(label("Speed", "stat-label"), 0, 0, 1, 1)
         self.fx_speed = nitro_scale(0, 9, 1, 4)
-        self.fx_speed.connect("value-changed", lambda *_: self._preview_effect())
+        self.fx_speed.connect("value-changed", lambda *_: self._changed())
         g.attach(self.fx_speed, 1, 0, 1, 1)
         g.attach(label("Brightness", "stat-label"), 0, 1, 1, 1)
         self.fx_bright = nitro_scale(0, 100, 5, 100)
-        self.fx_bright.connect("value-changed", lambda *_: self._preview_effect())
+        self.fx_bright.connect("value-changed", lambda *_: self._changed())
         g.attach(self.fx_bright, 1, 1, 1, 1)
         e.append(g)
-        ap2 = Gtk.Button(label="Apply", css_classes=["suggested-action"], halign=Gtk.Align.END)
-        ap2.connect("clicked", self._apply_effect)
-        e.append(ap2)
         self.stack.add_named(e, "effect")
+        self.box.append(label("Changes apply to the keyboard instantly.", "dim"))
         self.kb_mode["zones"].set_active(True)
+
+    def _mode(self):
+        return "effect" if self.kb_mode["effect"].get_active() else "zones"
 
     def _on_kb_mode(self, mode):
         self.stack.set_visible_child_name(mode)
-        self._preview_zones() if mode == "zones" else self._preview_effect()
+        self._changed()
 
     def _palette(self, _b, colors):
         for btn, c in zip(self.zone_btns, colors):
             self.silently(set_btn_color, btn, c)
-        self._preview_zones()
+        self._changed()
 
     def _zone_colors(self):
         return [rgba_hex(b) for b in self.zone_btns]
-
-    def _preview_zones(self):
-        self.preview.set_static(self._zone_colors(), self.z_bright.get_value())
 
     def _fx_args(self):
         return {"effect": self.fx.get_selected(), "speed": int(self.fx_speed.get_value()),
                 "brightness": int(self.fx_bright.get_value()), "direction": 1 if self.dir_row.get_selected() == 0 else 2,
                 "color": rgba_hex(self.fx_color)}
 
-    def _preview_effect(self):
+    def _update_preview(self):
         if not hasattr(self, "fx_bright"):
             return  # still building the page
-        a = self._fx_args()
-        self.preview.set_effect(a["effect"], a["color"], a["brightness"], a["speed"], a["direction"])
+        self.preview.enabled = self.kb_on
+        if self._mode() == "zones":
+            self.preview.set_static(self._zone_colors(), self.z_bright.get_value())
+        else:
+            a = self._fx_args()
+            self.preview.set_effect(a["effect"], a["color"], a["brightness"], a["speed"], a["direction"])
+        self.power_row.set_subtitle(("On · %s" % ("static zones" if self._mode() == "zones" else
+                                     hwmod.KB_EFFECTS[self.fx.get_selected()].lower())) if self.kb_on else "Off")
 
-    def _apply_zones(self, *_):
-        self.win.run_cmd("set_keyboard", "Keyboard colours applied", refresh_state=True, mode="zones",
-                         colors=[c.lstrip("#") for c in self._zone_colors()], brightness=int(self.z_bright.get_value()))
+    def _changed(self):
+        """Any lighting control moved: preview it and (debounced) send it to the keyboard."""
+        if not hasattr(self, "fx_bright"):
+            return
+        if self.ready and not self.quiet:
+            if not self.kb_on:  # touching the controls switches the lights on
+                self.kb_on = True
+                self.silently(self.power_row.switch.set_active, True)
+            self._push()
+        self._update_preview()
 
-    def _apply_effect(self, *_):
-        a = self._fx_args()
-        a["color"] = a["color"].lstrip("#")
-        self.win.run_cmd("set_keyboard", "%s effect applied" % hwmod.KB_EFFECTS[a["effect"]], refresh_state=True,
-                         mode="effect", **a)
+    def _apply(self):
+        if self._mode() == "zones":
+            self.win.run_cmd("set_keyboard", None, mode="zones",
+                             colors=[c.lstrip("#") for c in self._zone_colors()], brightness=int(self.z_bright.get_value()))
+        else:
+            a = self._fx_args()
+            a["color"] = a["color"].lstrip("#")
+            self.win.run_cmd("set_keyboard", None, mode="effect", **a)
+
+    def _on_power(self, on):
+        if self.quiet or not self.ready:
+            return
+        self.kb_on = on
+        self._update_preview()
+        self.win.run_cmd("set_keyboard_power", "Keyboard lighting %s" % ("on" if on else "off"), on=on)
 
     def on_state(self, state):
-        kb = state.get("keyboard")
-        if self.loaded or not kb or not self.caps["keyboard_rgb"]:
+        if not self.caps["keyboard_rgb"]:
             return
-        self.loaded = True
-
-        def load():
-            if kb.get("mode") == "zones" and kb.get("colors"):
-                for btn, c in zip(self.zone_btns, kb["colors"]):
-                    set_btn_color(btn, "#" + str(c).lstrip("#"))
-                self.z_bright.set_value(kb.get("brightness", 100))
-                self.kb_mode["zones"].set_active(True)
-            elif kb.get("mode") == "effect":
-                self.fx.set_selected(int(kb.get("effect", 3)))
-                self.fx_speed.set_value(kb.get("speed", 4))
-                self.fx_bright.set_value(kb.get("brightness", 100))
-                self.dir_row.set_selected(0 if kb.get("direction") == 1 else 1)
-                set_btn_color(self.fx_color, "#" + str(kb.get("color", "ed1c34")).lstrip("#"))
-                self.kb_mode["effect"].set_active(True)
-        self.silently(load)
-        self._on_kb_mode("effect" if kb.get("mode") == "effect" else "zones")
+        self.kb_on = state.get("keyboard_on", True)
+        self.silently(self.power_row.switch.set_active, self.kb_on)
+        kb = state.get("keyboard")
+        if not self.ready and kb:
+            def load():
+                if kb.get("mode") == "zones" and kb.get("colors"):
+                    for btn, c in zip(self.zone_btns, kb["colors"]):
+                        set_btn_color(btn, "#" + str(c).lstrip("#"))
+                    self.z_bright.set_value(kb.get("brightness", 100))
+                    self.kb_mode["zones"].set_active(True)
+                elif kb.get("mode") == "effect":
+                    self.fx.set_selected(int(kb.get("effect", 3)))
+                    self.fx_speed.set_value(kb.get("speed", 4))
+                    self.fx_bright.set_value(kb.get("brightness", 100))
+                    self.dir_row.set_selected(0 if kb.get("direction") == 1 else 1)
+                    set_btn_color(self.fx_color, "#" + str(kb.get("color", "ed1c34")).lstrip("#"))
+                    self.kb_mode["effect"].set_active(True)
+                self.stack.set_visible_child_name(self._mode())
+            self.silently(load)
+        self.ready = True
+        self._update_preview()
 
     def update(self, st, si):
         daemon = bool(st.get("daemon"))
+        if self.caps["keyboard_rgb"]:
+            for w in (self.power_row, self.stack) + tuple(self.kb_mode.values()):
+                w.set_sensitive(daemon)
+            on = st.get("keyboard_on")
+            if on is not None and self.ready and on != self.kb_on:
+                self.kb_on = on
+                self.silently(self.power_row.switch.set_active, on)
+                self._update_preview()
         if self.caps["keyboard_led"] and not self.caps["keyboard_rgb"]:
             self.led.set_sensitive(daemon)
             if st.get("kbd_led") is not None and not self.led.has_focus():

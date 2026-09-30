@@ -20,6 +20,13 @@ FIXES = [
     ("if(input[len-1] == '\\n'){", "if(len && input[len-1] == '\\n'){", 1),
     ("if(input_buf[len-1] == '\\n'){", "if(len && input_buf[len-1] == '\\n'){", 1),
     ("if(str_buf[len-1] == '\\n'){", "if(len && str_buf[len-1] == '\\n'){", 1),
+    # Static mode was dark on AN515-58 (BIOS V2.18, upstream issue #99) while effects
+    # worked. Send it the way PredatorSense-compatible drivers do: zone colours first,
+    # then the mode command, with byte 8 = 0 for static (3 is only used by effects).
+    ("u8 gmInput[16] = {mode, speed, brightness, 0, direction, red, green, blue, 3, 1, 0, 0, 0, 0, 0, 0};",
+     "u8 gmInput[16] = {mode, speed, brightness, 0, direction, red, green, blue, mode == 0 ? 0 : 3, 1, 0, 0, 0, 0, 0, 0};", 1),
+    ('     status = set_kb_status(0, 0, input->brightness, 0, 0, 0, 0);\n     if (ACPI_FAILURE(status)) {\n         pr_err("Error setting KB status.\\n");\n         return -ENODEV;\n     }\n \n     for (int i = 0; i < 4; i++) {\n         *zones[i] = (cpu_to_be64(*zones[i]) >> 32) | zone_ids[i];\n         status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_RGB_KB_METHODID, *zones[i], NULL);\n         if (ACPI_FAILURE(status)) {\n             pr_err("Error setting KB color (zone %d): %s\\n", i + 1, acpi_format_exception(status));\n             return status;\n         }\n     }\n',
+     '     for (int i = 0; i < 4; i++) {\n         *zones[i] = (cpu_to_be64(*zones[i]) >> 32) | zone_ids[i];\n         status = WMI_gaming_execute_u64(ACER_WMID_SET_GAMING_RGB_KB_METHODID, *zones[i], NULL);\n         if (ACPI_FAILURE(status)) {\n             pr_err("Error setting KB color (zone %d): %s\\n", i + 1, acpi_format_exception(status));\n             return status;\n         }\n     }\n \n     /* Switch to static mode only after the zone colours are stored */\n     status = set_kb_status(0, 0, input->brightness, 0, 0, 0, 0);\n     if (ACPI_FAILURE(status)) {\n         pr_err("Error setting KB status.\\n");\n         return -ENODEV;\n     }\n', 1),
     # A failed write closed the file twice.
     ('pr_info("state_access - Error writing to file: %ld\\n", len);\n         filp_close(file, NULL);\n',
      'pr_info("state_access - Error writing to file: %ld\\n", len);\n', 1),

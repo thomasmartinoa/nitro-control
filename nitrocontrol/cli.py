@@ -106,6 +106,7 @@ def main(argv=None):
     e.add_argument("-c", "--color", default="ff0000")
     e.add_argument("-d", "--direction", choices=["left", "right"], default="right")
     kbs.add_parser("off", help="turn the keyboard lighting off")
+    kbs.add_parser("on", help="turn the keyboard lighting back on (last colours/effect)")
 
     ps = sub.add_parser("preset", help="list/apply/save/delete presets")
     ps.add_argument("action", choices=["list", "apply", "save", "delete"])
@@ -199,8 +200,8 @@ def run(args, client):
             client.call("set_keyboard", mode="effect", effect=[x.lower() for x in hwmod.KB_EFFECTS].index(args.name),
                         speed=args.speed, brightness=args.brightness, color=args.color,
                         direction=1 if args.direction == "left" else 2)
-        elif args.kbmode == "off":
-            client.call("set_keyboard", mode="zones", colors=["000000"] * 4, brightness=0)
+        elif args.kbmode in ("on", "off"):
+            client.call("set_keyboard_power", on=args.kbmode == "on")
         else:
             raise NitroError("use: nitroctl rgb zones|effect|off")
         print("keyboard updated")

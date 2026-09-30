@@ -241,8 +241,15 @@ do_install() {
     fi
     ok "Driver built and registered with DKMS (rebuilds automatically on kernel updates)"
 
-    info "Switching from acer_wmi to Linuwu-Sense…"
+    info "Switching to the new Linuwu-Sense driver…"
     stop_service  # the service hands the fans back to the firmware as it stops
+    if loaded linuwu_sense && ! modprobe -r linuwu_sense; then
+        # Upgrade of an already-running copy that can't be unloaded right now:
+        # the new build is installed and takes over at the next boot.
+        start_service
+        warn "The running driver is busy; the updated one will be used after a reboot."
+        exit 0
+    fi
     if loaded acer_wmi && ! modprobe -r acer_wmi; then
         red "Could not unload acer_wmi (in use?). Nothing changed; reboot and try again."
         start_service

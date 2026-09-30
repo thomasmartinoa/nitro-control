@@ -311,6 +311,38 @@ class SlowReadTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)                      # refreshed right after a change
 
 
+class KeyboardTests(unittest.TestCase):
+    KB = "/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/four_zoned_kb"
+
+    def setUp(self):
+        self.hw = fresh(linuwu=True)
+        self.ctl = daemon.Controller(self.hw, os.path.join(ROOT, "state.json"))
+
+    def test_static_effect_uses_zone_path(self):
+        before = val(self.KB + "/four_zone_mode")
+        self.ctl.set_keyboard(mode="effect", effect=0, color="00ff88", brightness=60)
+        self.assertEqual(val(self.KB + "/per_zone_mode"), "00ff88,00ff88,00ff88,00ff88,60")
+        self.assertEqual(val(self.KB + "/four_zone_mode"), before)        # effect mode 0 never sent
+
+    def test_power_off_on_restores_last_setting(self):
+        self.ctl.set_keyboard(mode="zones", colors=["ff0000", "00ff00", "0000ff", "ffffff"], brightness=80)
+        self.ctl.set_keyboard_power(False)
+        self.assertEqual(val(self.KB + "/per_zone_mode"), "ff0000,00ff00,0000ff,ffffff,0")
+        self.assertFalse(self.ctl.state["keyboard_on"])
+        self.ctl.set_keyboard_power(True)
+        self.assertEqual(val(self.KB + "/per_zone_mode"), "ff0000,00ff00,0000ff,ffffff,80")
+        self.ctl.set_keyboard_power(False)
+        self.ctl.set_keyboard(mode="effect", effect=3, speed=5, brightness=100, direction=2, color="ff0000")
+        self.assertTrue(self.ctl.state["keyboard_on"])                    # choosing a look turns it on
+
+    def test_off_survives_restart(self):
+        self.ctl.set_keyboard(mode="zones", colors=["ff0000"] * 4, brightness=100)
+        self.ctl.set_keyboard_power(False)
+        fakesys.set_value(ROOT, self.KB + "/per_zone_mode", "ff0000,ff0000,ff0000,ff0000,100")
+        daemon.Controller(self.hw, os.path.join(ROOT, "state.json")).restore()
+        self.assertEqual(val(self.KB + "/per_zone_mode"), "ff0000,ff0000,ff0000,ff0000,0")
+
+
 class SocketTests(unittest.TestCase):
     def test_roundtrip_and_permissions(self):
         hw = fresh()

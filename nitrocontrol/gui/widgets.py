@@ -433,6 +433,7 @@ class KeyboardPreview(Gtk.DrawingArea):
         super().__init__()
         self.zones = ["#ff1a3c"] * 4
         self.brightness = 100
+        self.enabled = True
         self.effect = None      # None = static zones, else effect index
         self.effect_color = "#ff1a3c"
         self.speed = 4
@@ -457,7 +458,7 @@ class KeyboardPreview(Gtk.DrawingArea):
         self.queue_draw()
 
     def _update_anim(self):
-        animated = self.effect not in (None, 0) and self.get_mapped()
+        animated = self.enabled and self.effect not in (None, 0) and self.get_mapped()
         if animated and self._tick_id is None:
             self._tick_id = self.add_tick_callback(lambda *_: (self.queue_draw(), True)[1])
         elif not animated:
@@ -470,7 +471,7 @@ class KeyboardPreview(Gtk.DrawingArea):
 
     def _key_color(self, fx, t):
         """fx: horizontal position 0..1. Returns (r, g, b, intensity)."""
-        b = self.brightness / 100.0
+        b = self.brightness / 100.0 if self.enabled else 0.0
         if self.effect is None:
             zone = min(3, int(fx * 4))
             return hex_to_rgb(self.zones[zone]) + (b,)

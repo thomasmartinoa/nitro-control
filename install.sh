@@ -219,6 +219,9 @@ rgb_prompt() {
 }
 
 case "$VENDOR" in *Acer*) IS_ACER=1 ;; *) IS_ACER=0 ;; esac
+# Already managed by Nitro Control: re-run the setup so driver fixes get applied
+# (it does nothing when the installed build is current).
+[ "$RGB" != no ] && [ -f /etc/modprobe.d/nitro-control-rgb.conf ] && RGB=yes
 if [ "$RGB" = yes ] || { [ "$RGB" = ask ] && [ "$IS_ACER" = 1 ] && ! grep -q '^linuwu_sense ' /proc/modules && rgb_prompt; }; then
     if ASSUME_YES=$ASSUME_YES sh "$RGB_SETUP" install; then
         :

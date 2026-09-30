@@ -69,6 +69,7 @@ DEFAULT_STATE = {
     "governor": None,
     "battery_limit": None,
     "keyboard": None,
+    "keyboard_on": True,
     "kbd_led": None,
     "toggles": {},
     "auto_switch": {"enabled": False, "ac": "Balanced", "battery": "Battery Saver"},
@@ -173,7 +174,7 @@ class Controller:
             ("epp", hw.set_epp),
             ("governor", hw.set_governor),
             ("battery_limit", hw.set_battery_limit),
-            ("keyboard", self._write_keyboard),
+            ("keyboard", lambda kb: self._write_keyboard(kb) if s.get("keyboard_on", True) else None),
             ("kbd_led", hw.set_kbd_led_brightness),
         ]
         for key, fn in steps:
@@ -182,6 +183,11 @@ class Controller:
                     fn(s[key])
                 except (OSError, ValueError, TypeError) as e:
                     log.warning("restore %s failed: %s", key, e)
+        if hw.kb4 and not s.get("keyboard_on", True):
+            try:
+                self._keyboard_off()
+            except (OSError, ValueError) as e:
+                log.warning("restore keyboard off failed: %s", e)
         for name, value in (s.get("toggles") or {}).items():
             try:
                 hw.set_toggle(name, value)
@@ -355,6 +361,7 @@ class Controller:
                 "emergency": self.emergency,
                 "custom": dict(self.state["custom"]),
                 "active_preset": self.state.get("active_preset"),
+                "keyboard_on": self.state.get("keyboard_on", True),
                 "events": list(self.events)[-12:],
             })
             return out
@@ -434,16 +441,37 @@ class Controller:
         mode = kb.get("mode")
         if mode == "zones":
             self.hw.kb_set_zones(kb["colors"], kb.get("brightness", 100))
+        elif mode == "effect" and int(kb.get("effect", 0)) == 0:
+            # Single-colour static goes through the per-zone path: the firmware's
+            # effect-mode 0 leaves the keyboard dark on some models (AN515-58).
+            self.hw.kb_set_zones([kb.get("color", "ff0000")] * 4, kb.get("brightness", 100))
         elif mode == "effect":
             self.hw.kb_set_effect(kb.get("effect", 0), kb.get("speed", 4), kb.get("brightness", 100),
                                   kb.get("direction", 2), kb.get("color", "ff0000"))
         else:
             raise RequestError("keyboard mode must be zones or effect")
 
+    def _keyboard_off(self):
+        kb = self.state.get("keyboard") or {}
+        colors = kb.get("colors") if kb.get("mode") == "zones" else None
+        self.hw.kb_set_zones(colors or ["000000"] * 4, 0)  # brightness 0 keeps the colours stored
+
     def set_keyboard(self, **kb):
         self._write_keyboard(kb)
         keep = {"mode", "colors", "brightness", "effect", "speed", "direction", "color"}
         self.state["keyboard"] = {k: v for k, v in kb.items() if k in keep}
+        self.state["keyboard_on"] = True
+        self.save()
+
+    def set_keyboard_power(self, on):
+        if not self.hw.kb4:
+            raise RequestError("RGB keyboard control needs the Linuwu-Sense driver")
+        if on:
+            self._write_keyboard(self.state.get("keyboard") or
+                                 {"mode": "zones", "colors": ["ed1c34"] * 4, "brightness": 100})
+        else:
+            self._keyboard_off()
+        self.state["keyboard_on"] = bool(on)
         self.save()
 
     def set_kbd_led(self, value):
@@ -579,6 +607,7 @@ COMMANDS = {
     "set_governor": ("set_governor", True),
     "set_battery_limit": ("set_battery_limit", True),
     "set_keyboard": ("set_keyboard", True),
+    "set_keyboard_power": ("set_keyboard_power", True),
     "set_kbd_led": ("set_kbd_led", True),
     "set_toggle": ("set_toggle", True),
     "set_safety": ("set_safety", True),
