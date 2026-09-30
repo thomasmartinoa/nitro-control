@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nitro-control"
+dynamic = ["version"]
+description = "Open-source NitroSense alternative for Acer Nitro & Predator laptops on Linux"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [{ name = "thomasmartinoa" }]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Environment :: X11 Applications :: GTK",
+    "Topic :: System :: Hardware",
+    "License :: OSI Approved :: MIT License",
+]
+# The GUI also needs PyGObject + GTK 4 + libadwaita from your distribution.
+
+[project.urls]
+Homepage = "https://github.com/thomasmartinoa/nitro-control"
+
+[project.scripts]
+nitroctl = "nitrocontrol.cli:main"
+nitro-controld = "nitrocontrol.daemon:main"
+
+[project.gui-scripts]
+nitro-control = "nitrocontrol.gui.app:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "nitrocontrol.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["nitrocontrol*"]
+
+[tool.setuptools.package-data]
+"nitrocontrol.gui" = ["style.css", "icons/*.svg"]

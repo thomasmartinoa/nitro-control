@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Nitro Control
+GenericName=Laptop Control Center
+Comment=Fans, thermal modes, RGB keyboard and battery for Acer Nitro & Predator laptops
+Exec=nitro-control
+Icon=nitro-control
+Terminal=false
+Categories=System;Settings;HardwareSettings;GTK;
+Keywords=acer;nitro;predator;nitrosense;fan;rgb;keyboard;battery;thermal;performance;
+StartupNotify=true

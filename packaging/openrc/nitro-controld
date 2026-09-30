@@ -1,0 +1,22 @@
+#!/sbin/openrc-run
+# OpenRC service for Nitro Control (Gentoo, Artix, Alpine, ...)
+
+name="nitro-controld"
+description="Nitro Control hardware service"
+command="@PYTHON@"
+command_args="-m nitrocontrol.daemon"
+command_background="yes"
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/nitro-controld.log"
+error_log="/var/log/nitro-controld.log"
+
+export PYTHONPATH="@LIBDIR@"
+export PYTHONDONTWRITEBYTECODE=1
+
+depend() {
+	after modules
+}
+
+stop_post() {
+	"@PYTHON@" -m nitrocontrol.daemon --restore-auto >/dev/null 2>&1 || true
+}

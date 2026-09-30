@@ -1,0 +1,35 @@
+[Unit]
+Description=Nitro Control hardware service (fans, thermal profiles, lighting, battery)
+Documentation=https://github.com/thomasmartinoa/nitro-control
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=@LIBDIR@
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@PYTHON@ -m nitrocontrol.daemon
+# Whatever happens to the service, give the fans back to the firmware
+ExecStopPost=@PYTHON@ -m nitrocontrol.daemon --restore-auto
+Restart=on-failure
+RestartSec=3
+
+RuntimeDirectory=nitro-control
+RuntimeDirectoryMode=0755
+StateDirectory=nitro-control
+
+# Hardening: the service only needs /sys, its state dir and its socket
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_SYS_ADMIN
+
+[Install]
+WantedBy=multi-user.target
