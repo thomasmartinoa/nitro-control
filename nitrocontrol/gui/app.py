@@ -642,6 +642,10 @@ class PerformancePage(Page):
             grp.add(row)
         if not self.caps["profiles"]:
             grp.set_description("No platform profiles available on this kernel.")
+        elif self.caps.get("ppd"):
+            grp.set_description("Sets the firmware power limits and fan behaviour. Synced with your desktop's power "
+                                "widget (power-profiles-daemon): Saver, Balanced and Performance there are the same "
+                                "modes as here, so the two always agree.")
         self.box.append(grp)
 
         cpu = Adw.PreferencesGroup(title="Processor")
@@ -1153,6 +1157,8 @@ class SystemPage(Page):
             ("CPU boost control", c["cpu_boost"], ""),
             ("Energy preference (EPP)", bool(c["epp"]), ""),
             ("Discrete GPU power state", c["dgpu"], ""),
+            ("Desktop power widget sync", c.get("ppd", False),
+             "via power-profiles-daemon" if c.get("ppd") else "power-profiles-daemon not running"),
         ]
         for name, ok, detail in items:
             row = Adw.ActionRow(title=esc(name), subtitle=esc(detail))
@@ -1402,6 +1408,7 @@ class App(Adw.Application):
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         display = Gdk.Display.get_default()
         Gtk.IconTheme.get_for_display(display).add_search_path(os.path.join(HERE, "icons"))
+        Gtk.Window.set_default_icon_name(APP_ID)
         css = Gtk.CssProvider()
         css.load_from_path(os.path.join(HERE, "style.css"))
         Gtk.StyleContext.add_provider_for_display(display, css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -1422,7 +1429,7 @@ class App(Adw.Application):
                   license_type=Gtk.License.MIT_X11, website=REPO_URL, issue_url=REPO_URL + "/issues",
                   comments="Open-source NitroSense alternative for Acer Nitro & Predator laptops on Linux.")
         if hasattr(Adw, "AboutWindow"):
-            dlg = Adw.AboutWindow(transient_for=self.win, application_icon="nitro-control", **kw)
+            dlg = Adw.AboutWindow(transient_for=self.win, application_icon=APP_ID, **kw)
         else:
             dlg = Gtk.AboutDialog(transient_for=self.win, program_name="Nitro Control", version=__version__,
                                   website=REPO_URL, license_type=Gtk.License.MIT_X11)

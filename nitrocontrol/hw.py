@@ -11,6 +11,8 @@ Setting NITRO_SYSFS_ROOT points every path at a fake tree, which the tests use.
 import glob
 import os
 import re
+import shutil
+import subprocess
 
 ROOT = os.environ.get("NITRO_SYSFS_ROOT", "").rstrip("/")
 
@@ -223,6 +225,7 @@ class Hardware:
             "governors": self.governor_choices(),
             "dgpu": bool(self.dgpu),
             "battery": bool(self.battery),
+            "ppd": ppd_active(),
         }
 
     # ---------------------------------------------------------------- sensors
@@ -315,8 +318,15 @@ class Hardware:
         return read(self.profile_path) if self.profile_path else None
 
     def set_profile(self, name):
-        if name not in self.profile_choices():
+        choices = self.profile_choices()
+        if name not in choices:
             raise ValueError("unsupported profile %r" % name)
+        # With power-profiles-daemon running, go through it so the desktop's power
+        # widget stays in sync (it also sets the matching CPU EPP). Fall back to
+        # writing sysfs directly if it can't do this particular profile.
+        ppd = ppd_profile_for(name, choices)
+        if ppd and ppd_set(ppd) and self.profile() == name:
+            return
         write(self.profile_path, name)
 
     # -------------------------------------------------------------- CPU tune
@@ -361,7 +371,7 @@ class Hardware:
             write(pol + "/scaling_governor", value)
 
     # --------------------------------------------------------------- battery
-    def battery_info(self):
+    def battery_info(self, with_limit=True):
         b = self.battery
         if not b:
             return None
@@ -408,13 +418,15 @@ class Hardware:
             elif info["status"] == "Charging" and watt_hours_full:
                 info["time_left"] = max(0.0, watt_hours_full - watt_hours_now) / info["power"]
 
-        if self.charge_threshold:
-            info["limit"] = read_int(self.charge_threshold)
-        elif self.linuwu and _exists(self.linuwu + "/battery_limiter"):
-            info["limit"] = 80 if read_int(self.linuwu + "/battery_limiter") == 1 else 100
-        else:
-            info["limit"] = None
+        info["limit"] = self.battery_limit() if with_limit else None
         return info
+
+    def battery_limit(self):
+        if self.charge_threshold:
+            return read_int(self.charge_threshold)
+        if self.linuwu and _exists(self.linuwu + "/battery_limiter"):
+            return 80 if read_int(self.linuwu + "/battery_limiter") == 1 else 100
+        return None
 
     def ac_online(self):
         return read_int(self.ac + "/online") == 1 if self.ac else None
@@ -470,9 +482,10 @@ class Hardware:
         if not self.linuwu:
             return {}
         out = {}
-        for k in LINUWU_TOGGLES:
+        for k, (_label, _desc, allowed) in LINUWU_TOGGLES.items():
             if _exists(self.linuwu + "/" + k):
-                out[k] = read_int(self.linuwu + "/" + k)
+                v = read_int(self.linuwu + "/" + k)
+                out[k] = v if v in allowed else None
         return out
 
     def set_toggle(self, name, value):
@@ -529,6 +542,41 @@ def parse_color(value):
     if not m:
         raise ValueError("bad colour %r" % (value,))
     return m.group(1).lower()
+
+
+def _ppdctl():
+    return None if ROOT else shutil.which("powerprofilesctl")
+
+
+def ppd_active():
+    """True when power-profiles-daemon is running and answering."""
+    ctl = _ppdctl()
+    if not ctl:
+        return False
+    try:
+        return subprocess.run([ctl, "get"], capture_output=True, timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def ppd_profile_for(profile, choices):
+    """Map a platform profile to power-profiles-daemon's name for it, if it has one.
+
+    Mirrors power-profiles-daemon's own mapping, including its fallbacks for
+    firmware without low-power/performance (quiet / balanced-performance)."""
+    saver = "low-power" if "low-power" in choices else "quiet"
+    perf = "performance" if "performance" in choices else "balanced-performance"
+    return {saver: "power-saver", "balanced": "balanced", perf: "performance"}.get(profile)
+
+
+def ppd_set(name):
+    ctl = _ppdctl()
+    if not ctl:
+        return False
+    try:
+        return subprocess.run([ctl, "set", name], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def closest_profile(wanted, choices):

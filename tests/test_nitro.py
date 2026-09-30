@@ -273,6 +273,44 @@ class LinuwuDriverTests(unittest.TestCase):
         self.assertEqual(val(fakesys.LINUWU + "/fan_speed"), "40,40")
 
 
+class PowerProfilesTests(unittest.TestCase):
+    def test_mapping_full_firmware(self):
+        ch = ["low-power", "quiet", "balanced", "balanced-performance", "performance"]
+        self.assertEqual(hwmod.ppd_profile_for("low-power", ch), "power-saver")
+        self.assertEqual(hwmod.ppd_profile_for("performance", ch), "performance")
+        self.assertIsNone(hwmod.ppd_profile_for("quiet", ch))          # no PPD equivalent: written directly
+
+    def test_mapping_three_mode_firmware(self):
+        ch = ["quiet", "balanced", "balanced-performance"]           # AN515-58 under linuwu_sense
+        self.assertEqual(hwmod.ppd_profile_for("quiet", ch), "power-saver")
+        self.assertEqual(hwmod.ppd_profile_for("balanced", ch), "balanced")
+        self.assertEqual(hwmod.ppd_profile_for("balanced-performance", ch), "performance")
+
+    def test_never_touches_real_ppd_in_tests(self):
+        self.assertFalse(hwmod.ppd_active())
+        self.assertFalse(hwmod.ppd_set("balanced"))
+
+
+class SlowReadTests(unittest.TestCase):
+    def test_unreadable_toggle_is_unknown(self):
+        hw = fresh(linuwu=True)
+        fakesys.set_value(ROOT, fakesys.LINUWU + "/lcd_override", -1)
+        self.assertIsNone(hw.toggles()["lcd_override"])
+
+    def test_keyboard_read_is_throttled(self):
+        hw = fresh(linuwu=True)
+        ctl = daemon.Controller(hw, os.path.join(ROOT, "state.json"))
+        calls = []
+        orig = hw.kb_read
+        hw.kb_read = lambda: calls.append(1) or orig()
+        for _ in range(5):
+            ctl.tick()
+        self.assertEqual(len(calls), 1)
+        daemon.dispatch(ctl, {"cmd": "set_keyboard", "args": {"mode": "zones", "colors": ["ff0000"] * 4}}, True)
+        ctl.tick()
+        self.assertEqual(len(calls), 2)                      # refreshed right after a change
+
+
 class SocketTests(unittest.TestCase):
     def test_roundtrip_and_permissions(self):
         hw = fresh()

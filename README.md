@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="data/nitro-control.svg" width="96" alt="Nitro Control logo">
+<img src="data/io.github.thomasmartinoa.NitroControl.svg" width="96" alt="Nitro Control logo">
 
 # Nitro Control
 

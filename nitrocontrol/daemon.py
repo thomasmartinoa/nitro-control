@@ -82,6 +82,7 @@ DEFAULT_STATE = {
 SAFETY_LIMITS = {"cpu_critical": (75, 100), "gpu_critical": (70, 95)}
 COOL_DOWN = 10          # °C below critical before leaving emergency mode
 VERIFY_EVERY = 15       # s between read-backs of the firmware fan mode
+SLOW_EVERY = 30         # s between re-reads of settings that only change on request (each costs WMI calls)
 SENSOR_FAIL_LIMIT = 3   # consecutive failed reads before giving the fans back to firmware
 
 
@@ -111,6 +112,8 @@ class Controller:
         self.last_ac = hw.ac_online()
         self.suspend_gap = _boottime_gap()
         self.last_verify = 0.0
+        self.slow = {}
+        self.slow_at = None
 
     # ------------------------------------------------------------ state I/O
     def _load_state(self):
@@ -278,6 +281,17 @@ class Controller:
             for key, pct in self.applied.items():
                 if key in fans:
                     fans[key]["pct"] = pct
+            if self.slow_at is None or time.monotonic() - self.slow_at > SLOW_EVERY:
+                self.slow_at = time.monotonic()
+                self.slow = {
+                    "keyboard": hw.kb_read(),
+                    "kbd_led": hw.kbd_led_brightness(),
+                    "toggles": hw.toggles(),
+                    "battery_limit": hw.battery_limit(),
+                }
+            battery = hw.battery_info(with_limit=False)
+            if battery:
+                battery["limit"] = self.slow.get("battery_limit")
             self.cache = {
                 "temps": temps,
                 "fans": fans,
@@ -285,11 +299,11 @@ class Controller:
                 "cpu_boost": hw.cpu_boost(),
                 "epp": hw.epp(),
                 "governor": hw.governor(),
-                "battery": hw.battery_info(),
+                "battery": battery,
                 "ac_online": ac,
-                "keyboard": hw.kb_read(),
-                "kbd_led": hw.kbd_led_brightness(),
-                "toggles": hw.toggles(),
+                "keyboard": self.slow.get("keyboard"),
+                "kbd_led": self.slow.get("kbd_led"),
+                "toggles": self.slow.get("toggles"),
                 "dgpu_state": hw.dgpu_state(),
             }
 
@@ -617,6 +631,9 @@ def dispatch(ctl, request, may_write):
             return getattr(ctl, method)(**args)
         except TypeError as e:
             raise RequestError("bad arguments: %s" % e)
+        finally:
+            if needs_write:
+                ctl.slow_at = None  # re-read the slow settings on the next tick
 
 
 class Handler(socketserver.StreamRequestHandler):

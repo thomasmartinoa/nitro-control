@@ -44,6 +44,7 @@ while [ $# -gt 0 ]; do
 done
 
 LIBDIR=$PREFIX/lib/nitro-control
+APP_ID=io.github.thomasmartinoa.NitroControl
 BINDIR=$PREFIX/bin
 SHAREDIR=$PREFIX/share
 
@@ -87,6 +88,7 @@ if [ "$ACTION" = uninstall ]; then
     fi
     rm -rf "$LIBDIR"
     rm -f "$BINDIR/nitro-control" "$BINDIR/nitroctl" "$BINDIR/nitro-controld"
+    rm -f "$SHAREDIR/applications/$APP_ID.desktop" "$SHAREDIR/icons/hicolor/scalable/apps/$APP_ID.svg"
     rm -f "$SHAREDIR/applications/nitro-control.desktop" "$SHAREDIR/icons/hicolor/scalable/apps/nitro-control.svg"
     [ "$PURGE" = 1 ] && rm -rf /var/lib/nitro-control && ok "Removed saved settings"
     ok "Nitro Control uninstalled"
@@ -170,9 +172,12 @@ wrapper nitro-control nitrocontrol
 wrapper nitroctl nitrocontrol.cli
 wrapper nitro-controld nitrocontrol.daemon
 
-install -m 644 "$HERE/data/nitro-control.desktop" "$SHAREDIR/applications/nitro-control.desktop"
-sed -i "s#^Exec=.*#Exec=$BINDIR/nitro-control#" "$SHAREDIR/applications/nitro-control.desktop"
-install -m 644 "$HERE/data/nitro-control.svg" "$SHAREDIR/icons/hicolor/scalable/apps/nitro-control.svg"
+# Named after the application ID so docks/taskbars match the running window to its icon
+rm -f "$SHAREDIR/applications/nitro-control.desktop" "$SHAREDIR/icons/hicolor/scalable/apps/nitro-control.svg"
+install -m 644 "$HERE/data/$APP_ID.desktop" "$SHAREDIR/applications/$APP_ID.desktop"
+sed -i "s#^Exec=.*#Exec=$BINDIR/nitro-control#" "$SHAREDIR/applications/$APP_ID.desktop"
+install -m 644 "$HERE/data/$APP_ID.svg" "$SHAREDIR/icons/hicolor/scalable/apps/$APP_ID.svg"
+touch "$SHAREDIR/icons/hicolor" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q "$SHAREDIR/icons/hicolor" 2>/dev/null || true
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$SHAREDIR/applications" 2>/dev/null || true
 ok "Files installed"
@@ -221,6 +226,12 @@ if [ "$RGB" = yes ] || { [ "$RGB" = ask ] && [ "$IS_ACER" = 1 ] && ! grep -q '^l
         warn "RGB driver setup did not complete. Everything else works; retry later with:"
         warn "    sudo sh $RGB_SETUP install"
     fi
+fi
+
+# The desktop power widget (power-profiles-daemon) only reads the available thermal
+# modes at start; refresh it in case the Acer driver changed since it started.
+if grep -q '^linuwu_sense ' /proc/modules && [ -d /run/systemd/system ]; then
+    systemctl try-restart power-profiles-daemon.service tuned-ppd.service 2>/dev/null || true
 fi
 
 # ------------------------------------------------------------ permissions

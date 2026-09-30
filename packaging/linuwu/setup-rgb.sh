@@ -91,6 +91,16 @@ start_service() {
     esac
 }
 
+# power-profiles-daemon (the desktop's power widget) reads the available thermal
+# modes only at start-up, so it must be restarted whenever the driver changes.
+restart_power_profiles() {
+    if [ -d /run/systemd/system ]; then
+        systemctl try-restart power-profiles-daemon.service tuned-ppd.service 2>/dev/null || true
+    elif command -v rc-service >/dev/null 2>&1 && [ -x /etc/init.d/power-profiles-daemon ]; then
+        rc-service power-profiles-daemon restart >/dev/null 2>&1 || true
+    fi
+}
+
 # ------------------------------------------------------------ build tools
 pkg_install() {
     CMD=""
@@ -247,6 +257,7 @@ do_install() {
 # fall back to the stock acer_wmi driver so fans and thermal profiles keep working.
 install acer_wmi $modprobe_bin linuwu_sense 2>/dev/null || $modprobe_bin --ignore-install acer_wmi
 EOF
+        restart_power_profiles
         start_service
         if [ -d "$SYSFS_BASE/four_zoned_kb" ]; then
             ok "RGB keyboard ready — open the Lighting page in Nitro Control"
@@ -256,6 +267,7 @@ EOF
     else
         red "Linuwu-Sense did not start on this laptop — restoring acer_wmi."
         restore_stock
+        restart_power_profiles
         start_service
         dkms_cleanup
         exit 1
@@ -274,6 +286,7 @@ do_remove() {
     restore_stock
     rm -f /etc/predator_state /etc/four_zone_kb_state
     dkms_cleanup
+    restart_power_profiles
     start_service
     ok "Linuwu-Sense removed; acer_wmi is back"
 }
