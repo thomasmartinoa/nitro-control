@@ -24,10 +24,10 @@ from nitrocontrol import hw as hwmod  # noqa: E402
 from nitrocontrol import daemon  # noqa: E402
 
 
-def fresh(linuwu=False, threshold=False):
+def fresh(linuwu=False, threshold=False, linuwu_driver=False):
     shutil.rmtree(ROOT, ignore_errors=True)
     os.makedirs(ROOT)
-    fakesys.build(ROOT, linuwu=linuwu, threshold=threshold)
+    fakesys.build(ROOT, linuwu=linuwu, threshold=threshold, linuwu_driver=linuwu_driver)
     importlib.reload(hwmod)
     return hwmod.Hardware()
 
@@ -233,6 +233,44 @@ class ControllerTests(unittest.TestCase):
     def test_safety_limits_enforced(self):
         with self.assertRaises(daemon.RequestError):
             self.ctl.set_safety(cpu_critical=105)
+
+
+class LinuwuDriverTests(unittest.TestCase):
+    """linuwu_sense replaced acer_wmi: fans are driven through nitro_sense/fan_speed."""
+
+    def setUp(self):
+        self.hw = fresh(linuwu_driver=True)
+        self.ctl = daemon.Controller(self.hw, os.path.join(ROOT, "state.json"))
+
+    def test_backend(self):
+        caps = self.hw.capabilities()
+        self.assertEqual(caps["fan_control"], "linuwu")
+        self.assertEqual([f["key"] for f in caps["fans"]], ["cpu", "gpu"])
+        self.assertTrue(caps["keyboard_rgb"])
+        self.assertEqual(self.hw.read_fans()["cpu"]["rpm"], 2400)
+
+    def test_writes(self):
+        self.hw.fan_set_speeds({"cpu": 0, "gpu": 55})
+        self.assertEqual(val(fakesys.LINUWU + "/fan_speed"), "1,55")   # 0 would mean auto
+        self.assertEqual(self.hw.fan_mode(), "custom")
+        self.hw.fan_set_max()
+        self.assertEqual(self.hw.fan_mode(), "max")
+        self.hw.fan_set_auto()
+        self.assertEqual(val(fakesys.LINUWU + "/fan_speed"), "0,0")
+
+    def test_full_custom_is_not_a_mismatch(self):
+        self.ctl.set_fan("custom", cpu=100, gpu=100)
+        self.ctl.last_verify = -1e9
+        self.ctl.tick()
+        self.assertFalse(any("Firmware changed" in e["msg"] for e in self.ctl.events))
+
+    def test_ac_change_reapplies_fans(self):
+        self.ctl.set_fan("custom", cpu=40, gpu=40)
+        self.ctl.tick()
+        fakesys.set_value(ROOT, fakesys.LINUWU + "/fan_speed", "0,0")   # driver restored its AC state
+        fakesys.set_value(ROOT, "/sys/class/power_supply/ACAD/online", 1)
+        self.ctl.tick()
+        self.assertEqual(val(fakesys.LINUWU + "/fan_speed"), "40,40")
 
 
 class SocketTests(unittest.TestCase):

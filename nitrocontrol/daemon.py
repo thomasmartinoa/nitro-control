@@ -250,13 +250,15 @@ class Controller:
             if ac is not None and self.last_ac is not None and ac != self.last_ac:
                 self.event("Switched to %s power" % ("AC" if ac else "battery"))
                 auto = s["auto_switch"]
-                if auto.get("enabled"):
-                    name = auto.get("ac" if ac else "battery")
-                    if name:
-                        try:
-                            self.apply_preset(name)
-                        except (RequestError, OSError, ValueError) as e:
-                            self.event("Auto-switch to %s failed: %s" % (name, e), "warn")
+                name = auto.get("ac" if ac else "battery") if auto.get("enabled") else None
+                if name:
+                    try:
+                        self.apply_preset(name)
+                    except (RequestError, OSError, ValueError) as e:
+                        self.event("Auto-switch to %s failed: %s" % (name, e), "warn")
+                elif s["fan_mode"] != "auto":
+                    # Firmware (and linuwu_sense) restore their own per-power-source fan state
+                    self._apply_fan_mode(temps)
             self.last_ac = ac
 
             if s["fan_mode"] in ("custom", "curve") and hw.fan_backend:
@@ -266,6 +268,9 @@ class Controller:
                 self.last_verify = time.monotonic()
                 expected = "max" if (s["fan_mode"] == "max" or self.emergency) else "custom"
                 actual = hw.fan_mode()
+                if hw.fan_backend == "linuwu" and expected == "custom" and actual == "max" and \
+                        self.applied and all(v >= 100 for v in self.applied.values()):
+                    actual = "custom"  # linuwu reports 100,100 as max mode
                 if actual and actual != expected:
                     self.event("Firmware changed the fan mode to %s, re-applying %s" % (actual, s["fan_mode"]))
                     self._apply_fan_mode(temps)

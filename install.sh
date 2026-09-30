@@ -4,8 +4,9 @@
 #   sudo ./install.sh              install to /usr/local and start the service
 #   sudo ./install.sh --uninstall  remove it (fans are handed back to the firmware)
 #   sudo ./install.sh --uninstall --purge   also delete saved settings
+#   sudo ./install.sh --with-rgb   also set up the 4-zone RGB keyboard driver (Linuwu-Sense)
 #
-# Options: --prefix DIR (default /usr/local), --no-deps, --no-service, -y (don't ask)
+# Options: --prefix DIR (default /usr/local), --no-deps, --no-service, --no-rgb, -y (don't ask)
 
 set -eu
 
@@ -13,6 +14,7 @@ PREFIX=/usr/local
 DEPS=1
 SERVICE=1
 ASSUME_YES=0
+RGB=ask
 ACTION=install
 PURGE=0
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -30,10 +32,12 @@ while [ $# -gt 0 ]; do
         --prefix=*) PREFIX=${1#*=} ;;
         --no-deps) DEPS=0 ;;
         --no-service) SERVICE=0 ;;
+        --with-rgb) RGB=yes ;;
+        --no-rgb) RGB=no ;;
         --uninstall) ACTION=uninstall ;;
         --purge) PURGE=1 ;;
         -y|--yes) ASSUME_YES=1 ;;
-        -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
     shift
@@ -61,7 +65,13 @@ elif command -v openrc-run >/dev/null 2>&1 || [ -x /sbin/openrc-run ]; then INIT
 fi
 
 # --------------------------------------------------------------- uninstall
+RGB_SETUP="$HERE/packaging/linuwu/setup-rgb.sh"
+
 if [ "$ACTION" = uninstall ]; then
+    if [ -f /etc/modprobe.d/nitro-control-rgb.conf ] || ls -d /usr/src/linuwu-sense-* >/dev/null 2>&1; then
+        info "Removing the RGB keyboard driver and restoring acer_wmi…"
+        sh "$RGB_SETUP" remove || warn "RGB driver removal reported a problem: sh $RGB_SETUP status"
+    fi
     info "Stopping service (fans go back to automatic)…"
     if [ "$INIT" = systemd ]; then
         systemctl disable --now nitro-controld.service 2>/dev/null || true
@@ -187,6 +197,29 @@ if [ "$SERVICE" = 1 ]; then
     else
         warn "No systemd or OpenRC found. Start the service at boot with your init system:"
         warn "    $BINDIR/nitro-controld"
+    fi
+fi
+
+# ------------------------------------------------------------ RGB driver
+rgb_prompt() {
+    [ "$ASSUME_YES" = 1 ] && return 1          # never add a kernel driver without being asked
+    [ -t 0 ] || return 1
+    printf '\n'
+    info "Optional: 4-zone RGB keyboard, 80% charge limiter, LCD overdrive and more need the"
+    info "Linuwu-Sense kernel driver. It replaces acer_wmi (with automatic fallback), is built"
+    info "with DKMS so it survives kernel updates, and can be removed with --uninstall."
+    printf 'Set up the RGB keyboard driver now? [y/N] '
+    read -r reply || reply=n
+    case "$reply" in [yY]*) return 0 ;; *) return 1 ;; esac
+}
+
+case "$VENDOR" in *Acer*) IS_ACER=1 ;; *) IS_ACER=0 ;; esac
+if [ "$RGB" = yes ] || { [ "$RGB" = ask ] && [ "$IS_ACER" = 1 ] && ! grep -q '^linuwu_sense ' /proc/modules && rgb_prompt; }; then
+    if ASSUME_YES=$ASSUME_YES sh "$RGB_SETUP" install; then
+        :
+    else
+        warn "RGB driver setup did not complete. Everything else works; retry later with:"
+        warn "    sudo sh $RGB_SETUP install"
     fi
 fi
 

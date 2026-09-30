@@ -42,7 +42,7 @@ scripts and keybinds, and safety failsafes around everything.
 | Command line + scripting (`nitroctl`) | ✘ | ✔ |
 | Critical-temperature override & sensor-failure fallback | ✘ | ✔ |
 
-¹ Needs the optional [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense) driver. The page shows up on its own once that driver is loaded.
+¹ Needs the optional [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense) driver. `sudo ./install.sh --with-rgb` sets it up for you ([details](#rgb-keyboard-optional)).
 ² Or any kernel that exposes `charge_control_end_threshold` for your battery.
 
 <table>
@@ -100,6 +100,33 @@ The installer:
 Then open **Nitro Control** from your app menu, or run `nitro-control`.
 
 Uninstall with `sudo ./install.sh --uninstall`. Add `--purge` to also delete saved settings.
+
+## RGB keyboard (optional)
+
+The mainline kernel driver doesn't control the 4-zone RGB keyboard yet. The community
+[Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense) driver does. It also adds an 80 % charge
+limiter, LCD overdrive, the boot animation/sound toggle and power-off USB charging. The installer asks
+whether you want it (default: no), or you can run:
+
+```sh
+sudo ./install.sh --with-rgb                  # during install, or any time later
+sudo sh packaging/linuwu/setup-rgb.sh status  # which driver is active
+sudo sh packaging/linuwu/setup-rgb.sh remove  # back to stock acer_wmi
+```
+
+What the setup does, and why it's safe:
+
+1. **Pinned and verified source.** It downloads one exact upstream commit and checks SHA-256 hashes of the source, the licence and the patched result. If anything doesn't match, it refuses to build.
+2. **Patches.** Upstream doesn't build on Linux 7.x (`strncpy()` was removed), so the setup patches that. It also fixes two bugs that could crash the kernel when the module unloads (unchecked `filp_open()` error pointers, a double close) and an out-of-bounds read on empty writes. See [`patch_linuwu.py`](packaging/linuwu/patch_linuwu.py).
+3. **DKMS.** The module is rebuilt automatically for every new kernel. Clang-built kernels like CachyOS are detected (`LLVM=1`).
+4. **Safe switch.** The setup stops the service (fans go back to the firmware), unloads `acer_wmi` and loads Linuwu-Sense. If the new driver doesn't come up within a few seconds, everything is rolled back.
+5. **Boot fallback.** Instead of blacklisting `acer_wmi`, a modprobe rule loads Linuwu-Sense in its place, and falls back to the stock `acer_wmi` if Linuwu-Sense isn't built for the running kernel. You never boot without a working Acer driver.
+
+Requirements: Secure Boot off (or DKMS module signing set up), plus kernel headers and DKMS. The setup
+offers to install those with your package manager.
+
+> With Linuwu-Sense active, fan control goes through its `fan_speed` interface instead of hwmon PWM.
+> Nitro Control handles both, including curves and all the safety features.
 
 <details>
 <summary>Manual dependencies</summary>

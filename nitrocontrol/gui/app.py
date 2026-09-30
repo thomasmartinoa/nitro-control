@@ -753,9 +753,12 @@ class LightingPage(Page):
                 "but not the 4-zone RGB keyboard. The optional, open-source Linuwu-Sense kernel module adds it "
                 "(plus an 80% battery limiter, LCD overdrive, USB charging and boot-sound toggles). "
                 "Nitro Control detects it automatically once installed — nothing else to configure.", wrap=True))
-            info.append(label("Linuwu-Sense replaces acer_wmi and is reverse-engineered; install it only if you want "
-                              "these extras. On most distros: git clone, then 'make install' (needs kernel headers).",
-                              "dim", wrap=True))
+            info.append(label("Set it up with one command from the Nitro Control folder:", "dim", wrap=True))
+            info.append(label("sudo ./install.sh --with-rgb", "stat-value", selectable=True))
+            info.append(label("It downloads a pinned, checksum-verified version, applies Nitro Control's kernel 7.x "
+                              "and safety fixes, builds it with DKMS (rebuilt on kernel updates) and switches drivers "
+                              "with automatic fallback to acer_wmi. Undo anytime with ./install.sh --uninstall. "
+                              "Secure Boot must be off (or DKMS signing set up).", "dim", wrap=True))
             btn = Gtk.LinkButton(uri=LINUWU_URL, label="Open Linuwu-Sense on GitHub", halign=Gtk.Align.START)
             info.append(btn)
             self.box.append(info)
@@ -987,7 +990,8 @@ class BatteryPage(Page):
             grp.add(self.limiter)
         else:
             grp.set_description("The mainline driver doesn't expose a charge limit for this model yet. "
-                                "Installing Linuwu-Sense adds an 80 % limiter, which appears here automatically.")
+                                "Run 'sudo ./install.sh --with-rgb' to add the Linuwu-Sense driver, which brings an "
+                                "80 % limiter that appears here automatically.")
         self.box.append(grp)
 
         tips = card()

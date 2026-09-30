@@ -10,11 +10,16 @@ def _w(root, path, value):
         f.write(str(value) + "\n")
 
 
-def build(root, linuwu=False, threshold=False):
+def build(root, linuwu=False, threshold=False, linuwu_driver=False):
+    """linuwu: linuwu_sense extras present. linuwu_driver: linuwu_sense *replaced* acer_wmi,
+    so the hwmon device has sensors but no PWM control."""
+    linuwu = linuwu or linuwu_driver
     hw = "/sys/devices/platform/acer-wmi/hwmon/hwmon5"
-    for name, val in (("name", "acer"), ("fan1_input", 2400), ("fan2_input", 2600), ("pwm1", 0), ("pwm2", 0),
-                      ("pwm1_enable", 2), ("pwm2_enable", 2), ("temp1_input", 55000), ("temp2_input", 50000),
-                      ("temp3_input", 45000)):
+    attrs = [("name", "acer"), ("fan1_input", 2400), ("fan2_input", 2600), ("temp1_input", 55000),
+             ("temp2_input", 50000), ("temp3_input", 45000)]
+    if not linuwu_driver:
+        attrs += [("pwm1", 0), ("pwm2", 0), ("pwm1_enable", 2), ("pwm2_enable", 2)]
+    for name, val in attrs:
         _w(root, hw + "/" + name, val)
     os.makedirs(root + "/sys/class/hwmon", exist_ok=True)
     os.symlink(root + hw, root + "/sys/class/hwmon/hwmon5")
@@ -73,3 +78,4 @@ def set_value(root, path, value):
 
 
 HWMON = "/sys/devices/platform/acer-wmi/hwmon/hwmon5"
+LINUWU = "/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/nitro_sense"
