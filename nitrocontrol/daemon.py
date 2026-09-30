@@ -12,6 +12,7 @@ It is the only component that writes to hardware. It:
 
 import argparse
 import copy
+import errno
 import grp
 import json
 import logging
@@ -411,7 +412,13 @@ class Controller:
             choices = self.hw.profile_choices()
             cur = self.hw.profile()
             profile = choices[(choices.index(cur) + 1) % len(choices)] if cur in choices else choices[0]
-        self.hw.set_profile(profile)
+        try:
+            self.hw.set_profile(profile)
+        except OSError as e:
+            if e.errno == errno.EOPNOTSUPP and self.hw.ac_online() is False:
+                raise RequestError("%s is only available on AC power on this laptop"
+                                   % hwmod.PROFILE_LABELS.get(profile, profile))
+            raise
         self.state["profile"] = profile
         self.state["active_preset"] = None
         self.save()
@@ -515,10 +522,27 @@ class Controller:
             raise RequestError("unknown preset %r" % name)
         hw, notes = self.hw, []
         if preset.get("profile") and hw.profile_choices():
-            prof = hwmod.closest_profile(preset["profile"], hw.profile_choices())
-            if prof:
-                hw.set_profile(prof)
+            # Nearest mode first; some firmware refuses certain modes on battery,
+            # so fall back to the next-closest one it accepts.
+            choices = hw.profile_choices()
+            ranked = []
+            left = list(choices)
+            while left:
+                best = hwmod.closest_profile(preset["profile"], left)
+                if not best:
+                    break
+                ranked.append(best)
+                left.remove(best)
+            for prof in ranked:
+                try:
+                    hw.set_profile(prof)
+                except OSError:
+                    continue
                 self.state["profile"] = prof
+                if prof != ranked[0]:
+                    notes.append("%s isn't allowed right now, used %s" % (
+                        hwmod.PROFILE_LABELS.get(ranked[0], ranked[0]), hwmod.PROFILE_LABELS.get(prof, prof)))
+                break
         if preset.get("cpu_boost") is not None and hw.boost_path:
             hw.set_cpu_boost(preset["cpu_boost"])
             self.state["cpu_boost"] = bool(preset["cpu_boost"])

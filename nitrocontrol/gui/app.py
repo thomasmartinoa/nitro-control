@@ -1403,20 +1403,21 @@ class Window(Adw.ApplicationWindow):
     def run_task(self, fn, success=None, refresh_state=False):
         """Run fn(client) in a worker thread, then toast the result."""
         def work():
-            err, state = None, None
+            err, state, result = None, None, None
             try:
-                fn(self.client)
+                result = fn(self.client)
                 if refresh_state:
                     state = self.client.call("get_state")
             except NitroError as e:
                 err = str(e)
-            GLib.idle_add(done, err, state)
+            GLib.idle_add(done, err, state, result)
 
-        def done(err, state):
+        def done(err, state, result):
+            notes = result.get("notes") if isinstance(result, dict) else None
             if err:
                 self.toast(err)
-            elif success:
-                self.toast(success)
+            elif success or notes:
+                self.toast(" · ".join([success] * bool(success) + list(notes or [])))
             if state:
                 for p in self.pages:
                     p.on_state(state)

@@ -117,7 +117,7 @@ sudo sh packaging/linuwu/setup-rgb.sh remove  # back to stock acer_wmi
 What the setup does, and why it's safe:
 
 1. **Pinned and verified source.** It downloads one exact upstream commit and checks SHA-256 hashes of the source, the licence and the patched result. If anything doesn't match, it refuses to build.
-2. **Patches.** Upstream doesn't build on Linux 7.x (`strncpy()` was removed), so the setup patches that. It also fixes two bugs that could crash the kernel when the module unloads (unchecked `filp_open()` error pointers, a double close) and an out-of-bounds read on empty writes. It also makes Static mode work on the AN515-58, which stayed dark upstream ([upstream #99](https://github.com/0x7375646F/Linuwu-Sense/issues/99)): zone colours are now sent before the mode command, the way PredatorSense-compatible drivers do. See [`patch_linuwu.py`](packaging/linuwu/patch_linuwu.py).
+2. **Patches.** Upstream doesn't build on Linux 7.x (`strncpy()` was removed), so the setup patches that. It also fixes two bugs that could crash the kernel when the module unloads (unchecked `filp_open()` error pointers, a double close) and an out-of-bounds read on empty writes. For the AN515-58 it also ports the hardware-tested fixes from [fabiannabil1/Linuwu-AN515-58-Linuwu-Sense-Fix](https://github.com/fabiannabil1/Linuwu-AN515-58-Linuwu-Sense-Fix). Those fix Static zones and Breathing staying dark ([upstream #99](https://github.com/0x7375646F/Linuwu-Sense/issues/99)): the LED zones are switched on first, and Breathing keeps its speed. They also make the driver read AC/battery from the kernel instead of the firmware's unreliable status, which wrongly blocked Quiet and Performance. These fixes apply only to the AN515-58, so other models keep upstream behaviour. See [`patch_linuwu.py`](packaging/linuwu/patch_linuwu.py).
 3. **DKMS.** The module is rebuilt automatically for every new kernel. Clang-built kernels like CachyOS are detected (`LLVM=1`).
 4. **Safe switch.** The setup stops the service (fans go back to the firmware), unloads `acer_wmi` and loads Linuwu-Sense. If the new driver doesn't come up within a few seconds, everything is rolled back.
 5. **Boot fallback.** Instead of blacklisting `acer_wmi`, a modprobe rule loads Linuwu-Sense in its place, and falls back to the stock `acer_wmi` if Linuwu-Sense isn't built for the running kernel. You never boot without a working Acer driver.
@@ -227,7 +227,7 @@ python3 -m nitrocontrol
 ## Credits & disclaimer
 
 - The fan, sensor and platform-profile support comes from the Linux `acer-wmi` driver and its maintainers.
-- The optional RGB and extras come from [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense).
+- The optional RGB and extras come from [Linuwu-Sense](https://github.com/0x7375646F/Linuwu-Sense), with AN515-58 fixes from [fabiannabil1](https://github.com/fabiannabil1/Linuwu-AN515-58-Linuwu-Sense-Fix).
 
 Nitro Control is an independent project. It is **not affiliated with or endorsed by Acer**. "Acer", "Nitro",
 "Predator" and "NitroSense" are trademarks of Acer Inc. The software is provided under the MIT license,

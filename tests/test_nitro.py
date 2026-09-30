@@ -343,6 +343,25 @@ class KeyboardTests(unittest.TestCase):
         self.assertEqual(val(self.KB + "/per_zone_mode"), "ff0000,ff0000,ff0000,ff0000,0")
 
 
+class ProfileFallbackTests(unittest.TestCase):
+    def test_preset_falls_back_when_firmware_refuses_mode(self):
+        import errno
+        hw = fresh()
+        ctl = daemon.Controller(hw, os.path.join(ROOT, "state.json"))
+        real = hw.set_profile
+
+        def picky(name):  # firmware that only allows balanced on battery
+            if name != "balanced":
+                raise OSError(errno.EOPNOTSUPP, "Operation not supported")
+            real(name)
+        hw.set_profile = picky
+        out = ctl.apply_preset("Battery Saver")
+        self.assertEqual(hw.profile(), "balanced")
+        self.assertTrue(out["notes"])
+        with self.assertRaises(daemon.RequestError):   # clear message instead of a raw errno
+            ctl.set_profile("quiet")
+
+
 class SocketTests(unittest.TestCase):
     def test_roundtrip_and_permissions(self):
         hw = fresh()
